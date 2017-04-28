@@ -59,7 +59,15 @@ functions = {
 constants = ('e', 'pi')
 
 
-class RPNparserError(BaseException):
+def is_number(x):
+    try:
+        float(x)
+    except:
+        return False
+    return x.replace('.', '').isdigit()
+
+
+class RPNError(BaseException):
     def __init__(self, value):
         self.value = value
 
@@ -67,7 +75,7 @@ class RPNparserError(BaseException):
         return repr(self.value)
 
 
-class RPNparser(object):
+class RPN(object):
     def __init__(self, equation):
         """RPN parser
 
@@ -107,12 +115,12 @@ class RPNparser(object):
                 types_tokens.append((FUNC, token))
             elif token == ',':
                 types_tokens.append((SEPARATOR, token))
-            elif token.replace('.', '').isdigit():
+            elif is_number(token):
                 types_tokens.append((NUM, token))
-            elif token.replace('.', '').isalnum():
+            elif token.isalnum():
                 types_tokens.append((VAR, token))
             else:
-                raise RPNparserError("Found invalid token: {}".format(repr(token)))
+                raise RPNError("Found invalid token: {}".format(repr(token)))
         return types_tokens
 
     def shunting_yard(self, equation_string):
@@ -139,7 +147,7 @@ class RPNparser(object):
                 while stack and stack[-1] != LPAREN:
                     output.append(stack.pop())
                 if len(stack) == 0 or stack[-1] != LPAREN:
-                    raise RPNparserError("Separator misplace od parentheses mismatch")
+                    raise RPNError("Separator misplace od parentheses mismatch")
 
             # ---------- LEFT PARENTHESIS
             elif token_type == LPAREN:
@@ -150,7 +158,7 @@ class RPNparser(object):
                 while stack and stack[-1] != LPAREN:
                     output.append(stack.pop())
                 if len(stack) == 0 or stack[-1] != LPAREN:
-                    raise RPNparserError("Lack of left parenthesis")
+                    raise RPNError("Lack of left parenthesis")
                 stack.pop()
                 if stack and stack[-1] in functions:
                     output.append(stack.pop())
@@ -172,17 +180,23 @@ class RPNparser(object):
                         break
                 stack.append(o1)
             else:
-                raise RPNparserError("Unrecognized token: " + repr(token_type))
+                raise RPNError("Unrecognized token: " + repr(token_type))
 
         while stack:
             if stack[-1] in '()':
-                raise RPNparserError("Mismatched parenthesis")
+                raise RPNError("Mismatched parenthesis")
             output.append(stack.pop())
         return output
 
-    def compute(self, **kwargs):
+    def compute(self, *args, **kwargs):
         types_tokens = self.tokens_to_types_values(self.parsed)
         stack = []
+        var_counter = 0
+        for arg in args:
+            while 'x'+str(var_counter) in kwargs:
+                var_counter += 1
+            kwargs['x'+str(var_counter)] = arg
+
         for token_type, token in types_tokens:
             if token_type == NUM:
                 stack.append(token)
@@ -192,7 +206,7 @@ class RPNparser(object):
                 elif token in kwargs:
                     token = kwargs[token]
                 else:
-                    raise RPNparserError("Unknow variable: {}".format(repr(token)))
+                    raise RPNError("Unknow variable: {}".format(repr(token)))
                 stack.append(token)
             else:
                 if token_type == OPERATOR:
@@ -200,10 +214,10 @@ class RPNparser(object):
                 elif token_type == FUNC:
                     n = functions[token].args
                 else:
-                    raise RPNparserError("Wrong token type: {}".format(repr(token_type)))
+                    raise RPNError("Wrong token type: {}".format(repr(token_type)))
 
                 if len(stack) < n:
-                    raise RPNparserError("Not enough operator/function arguments")
+                    raise RPNError("Not enough operator/function arguments")
 
                 args = map(str, [stack.pop() for _ in xrange(n)][::-1])
                 if token_type == OPERATOR:
@@ -220,14 +234,14 @@ class RPNparser(object):
                         else:
                             tmp += args[1]
                     else:
-                        raise RPNparserError("Operator with wrong number of arguments")
+                        raise RPNError("Operator with wrong number of arguments")
                 else:
                     tmp = "math." + token + '(' + ', '.join(args) + ')'
                 tmp = eval(tmp)
                 stack.append(tmp)
 
         if len(stack) != 1:
-            raise RPNparserError("Something is wrong after parsing to infix notation")
+            raise RPNError("Something is wrong after parsing to infix notation")
         return stack[0]
 
     def infix(self):
@@ -242,10 +256,10 @@ class RPNparser(object):
                 elif token_type == FUNC:
                     n = functions[token].args
                 else:
-                    raise RPNparserError("Wrong token type: {}".format(repr(token_type)))
+                    raise RPNError("Wrong token type: {}".format(repr(token_type)))
 
                 if len(stack) < n:
-                    raise RPNparserError("Not enough operator/function arguments")
+                    raise RPNError("Not enough operator/function arguments")
 
                 args = [stack.pop() for _ in xrange(n)][::-1]
                 if token_type == OPERATOR:
@@ -256,16 +270,19 @@ class RPNparser(object):
                     elif operators[token].args == 2:
                         tmp = '( ' + args[0] + ' ' + token + ' ' + args[1] + ' ) '
                     else:
-                        raise RPNparserError("Operator with wrong number of arguments")
+                        raise RPNError("Operator with wrong number of arguments")
                 else:
                     tmp = token + '(' + ', '.join(args) + ') '
                 stack.append(tmp)
 
         if len(stack) != 1:
-            raise RPNparserError("Something is wrong after parsing to infix notation")
+            raise RPNError("Something is wrong after parsing to infix notation")
         result = stack[0].strip().strip('(').strip(')')
         result = ' '.join(result.split())
         return result
+
+    def __str__(self):
+        return self.infix()
 
 
 def test_rpn_manually():
@@ -274,12 +291,13 @@ def test_rpn_manually():
         if eq.lower() in ('', 'end', 'quit'):
             break
         try:
-            onp = RPNparser(eq)
-            print "RPN: ", onp.parsed
-            print "Infix: ", onp.infix()
-            print "Value: ", onp.compute(x1=-1, x2=2)
+            rpn = RPN(eq)
+            print "RPN: ", rpn.parsed
+            print "Infix: ", rpn.infix()
+            print "Value: ", rpn.compute(x1=-1, x2=2)
+            print "Value: ", rpn.compute([1, 2])
             print ''
-        except RPNparserError, e:
+        except RPNError, e:
             print '\nError:', e
 
 if __name__ == "__main__":
