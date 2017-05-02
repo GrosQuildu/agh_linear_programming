@@ -1,15 +1,19 @@
 # Linear programming, monte carlo method
 # ~Gros
 
-import multiprocessing
+import multiprocessing, logging
 import os
 import random
 import sys
 import traceback
+import operator
 import re
 from rpn import RPN, RPNError, is_number
 from decimal import *
+from time import time
 getcontext().prec = 4
+logger = multiprocessing.log_to_stderr()
+logger.setLevel(logging.ERROR)
 
 # http://stackoverflow.com/questions/4703390/how-to-extract-a-floating-number-from-a-string
 numeric_pattern = r"""
@@ -21,6 +25,14 @@ numeric_pattern = r"""
 )
 (?: [Ee] [+-]? \d+ ) ?
 """
+
+
+class EquationError(BaseException):
+    pass
+
+
+class UnsolvableError(BaseException):
+    pass
 
 
 def manually():
@@ -35,11 +47,11 @@ def manually():
         numbers_eq = rx.findall(boundary_equation)
 
         if len(numbers_eq) < 2:
-            raise IOError("Wrong amount of numbers id boundaries: {}".format(repr(boundary_equation)))
+            raise EquationError("Wrong amount of numbers id boundaries: {}".format(repr(boundary_equation)))
 
         a, b = map(float, (numbers_eq[0], numbers_eq[-1]))
         if a > b:
-            raise IOError("Left bound is bigger than right one: {}".format(repr(boundary_equation)))
+            raise EquationError("Left bound is bigger than right one: {}".format(repr(boundary_equation)))
         boundaries.append((a, b))
 
     # ------- EQUATIONS
@@ -56,7 +68,7 @@ def manually():
 
     goal_type = raw_input("Maximalize (max) or minimalize (min) goal function: ").lower()
     if goal_type not in ('min', 'max'):
-        raise IOError("Incorrect goal type, must be one of (min, max)")
+        raise EquationError("Incorrect goal type, must be one of (min, max)")
 
     return goal, goal_type, equations, boundaries
 
@@ -75,13 +87,13 @@ def preparse_equation(equation):
     equation = equation.split()
 
     if len(equation) < 3:
-        raise Exception("Incorrect equation to preparse: {}".format(repr(equation)))
+        raise Exception("Incorrect equation to pre-parsing: {}".format(repr(equation)))
 
     if equation[-2] not in correct_equalities:
-        raise IOError("Wrong equality, must be one of ({})".format(','.join(correct_equalities)))
+        raise EquationError("Wrong equality, must be one of ({})".format(','.join(correct_equalities)))
 
     if not is_number(equation[-1]):
-        raise IOError("Wrong boundary, must be numeric: {}".format(equation[-1]))
+        raise EquationError("Wrong boundary, must be numeric: {}".format(equation[-1]))
 
     return ' '.join(equation[:-2]), equation[-2], float(equation[-1])
 
@@ -91,13 +103,13 @@ def from_file(path):
 
     Args:
         path(string): file format is:
-            number_of_variables
+            number_of_variables(n)
             0 <= x0 <= 3.3
             10 <= x1 <= 323.3
             11.3 <= x2 <= 323
                 ...
             0 <= xn <= 2
-            number_of_equations
+            number_of_equations(r)
             x1 + x2 <= 3
             sin(tan(x3)) + (x0^4) >= 4
                 ...
@@ -106,7 +118,8 @@ def from_file(path):
             goal_type
 
     """
-    data = open(path).readlines()
+    with open(path) as f:
+        data = f.readlines()
     number_of_variables = int(data[0])
 
     # --------- BOUNDARIES
@@ -118,11 +131,11 @@ def from_file(path):
         numbers_eq = rx.findall(boundary_equation)
 
         if len(numbers_eq) < 2:
-            raise IOError("Wrong amount of numbers id boundaries: {}".format(repr(boundary_equation)))
+            raise EquationError("Wrong amount of numbers id boundaries: {}".format(repr(boundary_equation)))
 
         a, b = map(float, (numbers_eq[0], numbers_eq[-1]))
         if a > b:
-            raise IOError("Left bound is bigger than right one: {}".format(repr(boundary_equation)))
+            raise EquationError("Left bound is bigger than right one: {}".format(repr(boundary_equation)))
 
         boundaries.append((a, b))
         i += 1
@@ -139,18 +152,18 @@ def from_file(path):
     goal = RPN(data[i])
     goal_type = data[i+1]
     if goal_type not in ('min', 'max'):
-        raise IOError("Incorrect goal type, must be one of (min, max)")
+        raise EquationError("Incorrect goal type, must be one of (min, max)")
 
     return goal, goal_type, equations, boundaries
 
 
 def print_data(goal, goal_type, equations, boundaries):
     print "Goal: ",
-    if goal_type == 'min':
-        print 'minimalize ',
-    else:
-        print 'maximialize ',
     print goal.infix()
+    if goal_type == 'min':
+        print ' -> min',
+    else:
+        print ' -> max',
 
     for i in xrange(len(boundaries)):
         print "{} <= x{} <= {}".format(boundaries[i][0], i, boundaries[i][1])
@@ -159,28 +172,31 @@ def print_data(goal, goal_type, equations, boundaries):
         print "{} {} {}".format(equation[0].infix(), equation[1], equation[2])
 
 
-def is_smaller(x, y):
-    return x < y
+def prepare_from_equality(equality):
+    if equality == "<":
+        cmp_func = operator.lt
+    elif equality == "<=":
+        cmp_func = operator.le
+    elif equality == ">":
+        cmp_func = operator.gt
+    else:
+        cmp_func = operator.ge
+    return cmp_func
 
 
-def is_bigger(x, y):
-    return x > y
-
-
-def is_smaller_equal(x, y):
-    return x <= y
-
-
-def is_bigger_equal(x, y):
-    return x >= y
+def prepare_from_goal_type(goal_type):
+    if goal_type == 'min':
+        optimum = float('Inf')
+        cmp_func = operator.lt
+    else:
+        optimum = -1
+        cmp_func = operator.ge
+    return optimum, cmp_func
 
 
 def pass_all_equations(variables, equations):
     for equation in equations:
-        if equation[1] == '<=':
-            cmp_func = is_smaller_equal
-        else:
-            cmp_func = is_smaller_equal
+        cmp_func = prepare_from_equality(equation[1])
         if not cmp_func(equation[0].compute(*variables), equation[2]):
             return False
     return True
@@ -194,46 +210,33 @@ def find_optimum_one_level_wrapper(*args):
     return find_optimum_one_level(*(args[0]))
 
 
-def find_optimum_one_level(goal, goal_type, equations, boundaries):
-    """Find max/min value of goal function in boundaries
-
-    Returns:
-        optimum(tuple): (list of optimum variables, optimum)
-    """
-    density = 2
+def find_optimum_one_level(goal, goal_type, equations, boundaries, amount_of_rands):
+    optimum, cmp_func = prepare_from_goal_type(goal_type)
     optimum_variables = None
+    logger.info("start, rands {}, boundaries {}".format(amount_of_rands, boundaries))
 
-    if goal_type == 'min':
-        optimum = float('Inf')
-        cmp_func = is_smaller
-    else:
-        optimum = -1
-        cmp_func = is_bigger
-
-    # amount_of_rands = reduce(lambda x, y: x*y, [int(r-l+1) for l, r in boundaries])
-    amount_of_rands = 30
-    max_iterations = 10
-    max_counter = 0
-    print os.getpid()
-    while optimum_variables is None and max_counter < max_iterations:
-        for i in xrange(amount_of_rands*density):
-            random_variables = random_vector(boundaries)
-            if pass_all_equations(random_variables, equations):
-                print boundaries, os.getpid(), optimum, random_variables, goal.compute(*random_variables), pass_all_equations(random_variables, equations)
-                to_check = goal.compute(*random_variables)
-                if cmp_func(to_check, optimum):
-                    optimum = to_check
-                    optimum_variables = random_variables
-        max_counter += 1
+    for i in xrange(amount_of_rands):
+        random_variables = random_vector(boundaries)
+        logger.debug('{} {} {}'.format(boundaries, optimum, random_variables))
+        if pass_all_equations(random_variables, equations):
+            to_check = goal.compute(*random_variables)
+            if cmp_func(to_check, optimum):
+                optimum = to_check
+                optimum_variables = random_variables
 
     if optimum_variables is None:
-        print os.getpid()
-        raise Exception("Can't find optimum value")
+        logger.info("optimum not found")
+        return None, None
 
+    logger.info("optimum found: {} {}".format(optimum_variables, optimum))
     return optimum_variables, optimum
 
 
-def find_optimum(goal, goal_type, equations, boundaries, recursion_level=0):
+def find_optimum_wrapper(*args):
+    return find_optimum(*(args[0]))
+
+
+def find_optimum(goal, goal_type, equations, boundaries, amount_of_rands, processes=1, deep=True, recursion_level=0):
     """Minimalize/maximalize goal function using monte-carlo method with respect to boundaries
 
     Args:
@@ -241,61 +244,77 @@ def find_optimum(goal, goal_type, equations, boundaries, recursion_level=0):
         goal_type(string): min or max
         equations(list of tuples): (RPN, string, float), i.e. (RPN('x1+x0'), '<=', 13.4)
         boundaries(list of tuples): (float, float) for every variable, such that boundaries[i]][0] <= xi <= boundaries[i]][1]
+        amount_of_rands(int): how many random points check on every level
+        processes(int): number of processes to use
+        deep(bool): how to arrange work for processes (if True, join final results, else join on each level)
         recursion_level(int)
 
     Returns:
         optimum(tuple): (list of optimum variables, optimum)
     """
-    epsilon = 5
+    logger.info("Start with boundaries {}".format(boundaries))
+    epsilon = 5.
+    epsilon_multiprocessing = 100.
     max_recursion = sys.getrecursionlimit() - 10
-    delta = 2  # new boundary = (x - boundary_size/delta, x + boundary_size/delta)
-    processes = 2
+    delta = 4.  # new boundary = (x - boundary_size/delta, x + boundary_size/delta)
 
-    # if recursion_level >= max_recursion:
-    #     return find_optimum_one_level(goal, goal_type, equations, boundaries)
-    if all([True if r-l < epsilon else False for l, r in boundaries]):
-        return find_optimum_one_level(goal, goal_type, equations, boundaries)
+    # end conditions
+    if recursion_level >= max_recursion:
+        logger.info("Max recursion level overflow")
+        return find_optimum_one_level(goal, goal_type, equations, boundaries, amount_of_rands)
 
-    if processes > 1:
-        bound_sizes = [(r-l)/processes for l, r in boundaries]
-        new_boundaries = [[(l+(i*size), l+((i+1)*size)) if size > epsilon else (l, r) for (l, r), size in
-                           zip(boundaries, bound_sizes)] for i in xrange(processes)]
+    if all(r-l < epsilon for l, r in boundaries):
+        logger.info("Epsilon reached")
+        return find_optimum_one_level(goal, goal_type, equations, boundaries, amount_of_rands)
+
+    # split biggest bound across processes
+    max_bound_index, max_bound = max(enumerate(boundaries), key=lambda bound: bound[1][1] - bound[1][0])
+    max_bound_size = max_bound[1] - max_bound[0]
+    if processes > 1 and max_bound_size > epsilon_multiprocessing:
+        new_boundaries = []
+        for i in xrange(processes):
+            new_boundaries.append(boundaries[:])
+            new_boundaries[-1][max_bound_index] = (boundaries[max_bound_index][0] + (i * max_bound_size / processes),
+                                                   boundaries[max_bound_index][0] + ((i+1) * max_bound_size / processes))
 
         pool = multiprocessing.Pool(processes=processes)
-        print "new_boundaries", new_boundaries
-        optimum_vars = pool.map(find_optimum_one_level_wrapper, [[goal, goal_type, equations, bound] for bound in new_boundaries])
-
-        optimum_index = None
-        if goal_type == 'min':
-            optimum = float('Inf')
-            cmp_func = is_smaller
+        if deep:
+            optimum_point_value_from_processes = pool.map(find_optimum_wrapper,
+                                                   [(goal, goal_type, equations, bound, int(amount_of_rands/processes))
+                                                    for bound in new_boundaries])
         else:
-            optimum = -1
-            cmp_func = is_bigger
-        for i in xrange(len(optimum_vars)):
-            if cmp_func(optimum_vars[i][1], optimum):
-                optimum = optimum_vars[i][1]
-                optimum_index = i
+            optimum_point_value_from_processes = pool.map(find_optimum_one_level_wrapper,
+                                                   [(goal, goal_type, equations, bound, int(amount_of_rands/processes))
+                                                    for bound in new_boundaries])
 
-        if optimum_index is None:
-            raise Exception("Can't find optimum value")
-        optimum_vars = optimum_vars[optimum_index][0]
+        if goal_type == 'min':
+            optimum_point_value = min(optimum_point_value_from_processes, key=lambda optimum_vars: optimum_vars[1])
+        else:
+            optimum_point_value = max(optimum_point_value_from_processes, key=lambda optimum_vars: optimum_vars[1])
+
+        if deep:
+            return optimum_point_value
+
     else:
-        optimum_vars, optimum = find_optimum_one_level(goal, goal_type, equations, boundaries)
+        optimum_point_value = find_optimum_one_level(goal, goal_type, equations, boundaries, amount_of_rands)
 
-    new_boundaries = [(max(l, x-((r-l)/delta)), min(r, x+((r-l)/delta))) for (l, r), x in zip(boundaries, optimum_vars)]
-    print boundaries, new_boundaries
-    print optimum_vars
-    print ''
-    raw_input("pause")
-    return find_optimum(goal, goal_type, equations, new_boundaries, recursion_level+1)
+    optimum_point = optimum_point_value[0]
+    if optimum_point is None:
+        return None, None
+
+    new_boundaries = [(max(l, x-((r-l)/delta)), min(r, x+((r-l)/delta))) for (l, r), x in zip(boundaries, optimum_point)]
+    return find_optimum(goal, goal_type, equations, new_boundaries, amount_of_rands, recursion_level+1)
 
 
 if __name__ == "__main__":
     path = 'test_inputs/1p2.txt'
     parsed_data = from_file(path)
     print_data(*parsed_data)
-    print find_optimum(*parsed_data)
+    start_time = time()
+    for x in xrange(10):
+        print find_optimum(*parsed_data, amount_of_rands=1000, processes=1, deep=False)
+    end_time = time()
+    print "Duration: {}".format(end_time - start_time)
     sys.exit(0)
 
     '''
@@ -311,7 +330,7 @@ if __name__ == "__main__":
                 print_data(*parsed_data)
             else:
                 break
-        except IOError, e:
+        except EquationError, e:
             print "Input error:", e
             traceback.print_exc()
             sys.exit(1)
