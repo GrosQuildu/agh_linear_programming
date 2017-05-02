@@ -77,10 +77,17 @@ class RPN(object):
 
         Args:
             equation(string)
+
         Fields:
             parsed(list): RPN (postfix) representation of equation
         """
         self.parsed = self.shunting_yard(equation)
+
+    @staticmethod
+    def get_variables(rpn):
+        types_tokens = RPN.tokens_to_types_values(rpn.parsed)
+        types_tokens = filter(lambda token_type_value: token_type_value[0] == VAR, types_tokens)
+        return map(lambda token_type_value: token_type_value[1], types_tokens)
 
     @staticmethod
     def tokens_to_types_values(tokens):
@@ -89,10 +96,10 @@ class RPN(object):
         Args:
             tokens(string/list of strings): token is one of:
                 operators, functions, left/right parenthesis, function separator, constant, number, alnum variable
+
         Returns:
-            list of tuples (TYPE, value)
-                TYPE in [OPERATOR, FUNC, SEPARATOR, NUM, LPAREN, RPAREN]
-                value is a token
+            list of tuples (TYPE, token)
+                TYPE in [OPERATOR, FUNC, SEPARATOR, NUM, VAR, LPAREN, RPAREN]
         """
         if type(tokens) != list:
             for token_type in operators.keys() + functions.keys() + list('(),'):
@@ -124,6 +131,7 @@ class RPN(object):
 
         Args:
             equation_string(string)
+
         Returns:
             list of tokens
         """
@@ -288,13 +296,16 @@ def test_rpn_manually():
             break
         try:
             rpn = RPN(eq)
+            rpn_variables_names = RPN.get_variables(rpn)
+            rpn_variables_values = {}
+            for rpn_var in rpn_variables_names:
+                rpn_variables_values[rpn_var] = float(raw_input("{} = ".format(rpn_var)))
             print "RPN: ", rpn.parsed
             print "Infix: ", rpn.infix()
-            print "Value: ", rpn.compute(x1=-1, x2=2)
-            print "Value: ", rpn.compute([1, 2])
-            print ''
+            print "Result: ", rpn.compute(**rpn_variables_values)
         except RPNError as e:
             print '\nError:', e
+        print ''
 
 if __name__ == "__main__":
     test_rpn_manually()
