@@ -29,7 +29,7 @@ def manually():
 
     # --------- BOUNDARIES
     boundaries = []
-    print "Boundaries (int the form: 10 <= x0 <= 50):"
+    print "Boundaries (in the form: 10 <= x0 <= 50):"
     for i in xrange(number_of_variables):
         boundary_equation = raw_input("for x{}: ".format(i))
         bound = preparse_bound(boundary_equation)
@@ -350,7 +350,7 @@ if __name__ == "__main__":
         parser = argparse.ArgumentParser(description='Solver for linear problems, uses monte-carlo method Edit')
         parser.add_argument('file', type=str, help='Path to file to parse')
         parser.add_argument('amount', type=int, help='Amount of random points at each level')
-        parser.add_argument('-t', '--tests', type=int, help='Number of tests', default=1)
+        parser.add_argument('-t', '--tests', type=int, help='Number of tests (runs)', default=1)
         parser.add_argument('-p', '--processes', type=int, help='Number of processes', default=1)
         parser.add_argument('-d', '--deep', action='store_true', help='Breath or deep type of multiprocessing')
         args = parser.parse_args()
