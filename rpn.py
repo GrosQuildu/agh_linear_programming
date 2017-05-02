@@ -62,17 +62,13 @@ constants = ('e', 'pi')
 def is_number(x):
     try:
         float(x)
+        return True
     except:
         return False
-    return x.replace('.', '').isdigit()
 
 
 class RPNError(BaseException):
-    def __init__(self, value):
-        self.value = value
-
-    def __str__(self):
-        return repr(self.value)
+    pass
 
 
 class RPN(object):
@@ -206,7 +202,7 @@ class RPN(object):
                 elif token in kwargs:
                     token = kwargs[token]
                 else:
-                    raise RPNError("Unknow variable: {}".format(repr(token)))
+                    raise RPNError("Unknown variable: {}".format(repr(token)))
                 stack.append(token)
             else:
                 if token_type == OPERATOR:
