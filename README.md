@@ -1,5 +1,5 @@
 # AGH linear programming
-Solver for (not necessary) linear problems, using monte-carlo method
+Solver for (not necessary) linear problems, using monte-carlo method. University project.
 
 ### Linear problems
 Linear programming is a method to obtain "the best" set of values restricted to some linear conditions.
@@ -31,6 +31,8 @@ The most popular method for solving problems of that type is called simplex. How
 Therefore it can be used with non-linear equations.
 
 ### Solver
+Code for Python 2.7
+
 Run `main.py` for interactive session or `main.py --help` to pass args in command line.
 
 Program works by drawing set of variables `x[j]` (each in range `<d[j], g[j]>`) and choosing the best set meeting all inequalities.
