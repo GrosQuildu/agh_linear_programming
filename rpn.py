@@ -6,7 +6,7 @@ import math
 
 Info = namedtuple('Info', 'prec assoc args')
 L, R = 'Left Right'.split()
-OPERATOR, FUNC, SEPARATOR, NUM, VAR, LPAREN, RPAREN = 'OPERATOR FUNCTION SEPARATOR NUMBER VARIABLE ( )'.split()
+OPERATOR, FUNC, SEPARATOR, NUM, VAR, CONST, LPAREN, RPAREN = 'OPERATOR FUNCTION SEPARATOR NUMBER VARIABLE CONSTANT ( )'.split()
 operators = {
     '^': Info(prec=5, assoc=R, args=2),
     '*': Info(prec=3, assoc=L, args=2),
@@ -118,6 +118,8 @@ class RPN(object):
                 types_tokens.append((FUNC, token))
             elif token == ',':
                 types_tokens.append((SEPARATOR, token))
+            elif token in constants:
+                types_tokens.append((CONST, token))
             elif is_number(token):
                 types_tokens.append((NUM, token))
             elif token.isalnum():
@@ -139,7 +141,7 @@ class RPN(object):
         output, stack = [], []
         for position, (token_type, token) in enumerate(types_tokens):
             # ----------- NUMBERS
-            if token_type in (NUM, VAR):
+            if token_type in (NUM, VAR, CONST):
                 output.append(token)
 
             # ----------- FUNCTIONS
@@ -205,12 +207,13 @@ class RPN(object):
             if token_type == NUM:
                 stack.append(token)
             elif token_type == VAR:
-                if token in constants:
-                    token = "math."+token
-                elif token in kwargs:
+                if token in kwargs:
                     token = kwargs[token]
                 else:
                     raise RPNError("Unknown variable: {}".format(repr(token)))
+                stack.append(token)
+            elif token_type == CONST:
+                token = "math." + token
                 stack.append(token)
             else:
                 if token_type == OPERATOR:
@@ -252,7 +255,7 @@ class RPN(object):
         token_type = self.tokens_to_types_values(self.parsed)
         stack = []
         for token_type, token in token_type:
-            if token_type in (NUM, VAR):
+            if token_type in (NUM, VAR, CONST):
                 stack.append(token)
             else:
                 if token_type == OPERATOR:
