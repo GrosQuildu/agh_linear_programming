@@ -28,11 +28,11 @@ numeric_pattern = r"""
 """
 
 
-class EquationError(BaseException):
+class EquationError(Exception):
     pass
 
 
-class UnsolvableError(BaseException):
+class UnsolvableError(Exception):
     pass
 
 
@@ -121,6 +121,8 @@ def from_file(path):
     """
     with open(path) as f:
         data = f.readlines()
+    data = map(lambda x: x.strip(), data)
+    data = filter(lambda x: x and not x.startswith('#'), data)
     number_of_variables = int(data[0])
 
     # --------- BOUNDARIES
@@ -153,7 +155,7 @@ def from_file(path):
     goal = RPN(data[i])
     goal_type = data[i+1]
     if goal_type not in ('min', 'max'):
-        raise EquationError("Incorrect goal type, must be one of (min, max)")
+        raise EquationError("Incorrect goal type, must be one of (min, max): {}".format(goal_type))
 
     return goal, goal_type, equations, boundaries
 
@@ -208,7 +210,11 @@ def random_vector(boundaries):
 
 
 def find_optimum_one_level_wrapper(*args):
-    return find_optimum_one_level(*(args[0]))
+    try:
+        return find_optimum_one_level(*(args[0]))
+    except Exception as e:
+        print "Error in multiprocessing: {}".format(e)
+        return None, None
 
 
 def find_optimum_one_level(goal, goal_type, equations, boundaries, amount_of_rands, parameters=None):
@@ -234,7 +240,11 @@ def find_optimum_one_level(goal, goal_type, equations, boundaries, amount_of_ran
 
 
 def find_optimum_wrapper(*args):
-    return find_optimum(*(args[0]))
+    try:
+        return find_optimum(*(args[0]))
+    except Exception as e:
+        print "Error in multiprocessing: {}".format(e)
+        return None, None
 
 
 MonteCarloParameters = namedtuple("MonteCarloParameters", ['epsilon', 'epsilon_multiprocessing', 'max_recursion', 'delta'])
@@ -266,7 +276,7 @@ def find_optimum(goal, goal_type, equations, boundaries, amount_of_rands, parame
     """
     logger.info("Start with boundaries {}".format(boundaries))
     if parameters is None:
-        epsilon = 5.
+        epsilon = 1.
         epsilon_multiprocessing = 100.
         max_recursion = sys.getrecursionlimit() - 10
         delta = 4
@@ -353,10 +363,28 @@ if __name__ == "__main__":
         start_time_total = time()
         for i in xrange(args.tests):
             start_time = time()
-            print "Result {}: {}".format(i, find_optimum(*parsed_data, amount_of_rands=args.amount, processes=args.processes, deep=args.deep))
+            try:
+                print "Result {}: {}".format(i, find_optimum(*parsed_data, amount_of_rands=args.amount, processes=args.processes, deep=args.deep))
+            except EquationError as e:
+                print "Input error: {}".format(e)
+                if logger.level <= logging.DEBUG:
+                    traceback.print_exc()
+                sys.exit(1)
+            except RPNError as e:
+                print "RPN error: {}".format(e)
+                if logger.level <= logging.DEBUG:
+                    traceback.print_exc()
+                sys.exit(1)
+            except Exception as e:
+                print "Unknown error: {}".format(e)
+                if logger.level <= logging.DEBUG:
+                    traceback.print_exc()
+                sys.exit(1)
+
             if args.tests > 1:
                 print "Duration {}: {}".format(i, time() - start_time)
                 print ''
+
         end_time_total = time()
         print "Duration total: {}".format(end_time_total - start_time_total)
         sys.exit(0)
@@ -372,9 +400,9 @@ if __name__ == "__main__":
                 max_recursion = int(raw_input("Gimme recursion limit (max is {}): ".format(sys.getrecursionlimit())))
                 delta = float(raw_input("Gimme delta (for new boundaries): "))
                 parameters = MonteCarloParameters(epsilon, epsilon_multiprocessing, max_recursion, delta)
-            except ValueError, e:
+            except ValueError as e:
                 print "Input error: {}".format(e)
-            except Exception, e:
+            except Exception as e:
                 print "Unknown error: {}".format(e)
         else:
             print "Parameters set to default"
@@ -396,13 +424,13 @@ if __name__ == "__main__":
                     print ''
                 else:
                     sys.exit(0)
-            except EquationError, e:
+            except EquationError as e:
                 print "Input error: {}".format(e)
                 traceback.print_exc()
-            except RPNError, e:
+            except RPNError as e:
                 print "RPN error: {}".format(e)
                 traceback.print_exc()
-            except Exception, e:
+            except Exception as e:
                 print "Unknown error: {}".format(e)
                 traceback.print_exc()
 
@@ -417,9 +445,9 @@ if __name__ == "__main__":
                         deep = raw_input("Type of multiprocessing: breadth (b) or deep (d): ").lower()
                         if deep == 'b':
                             deep = False
-                except ValueError, e:
+                except ValueError as e:
                     print "Input error: {}".format(e)
-                except Exception, e:
+                except Exception as e:
                     print "Unknown error: {}".format(e)
 
             # ------ COMPUTE OPTIMUM
@@ -439,12 +467,15 @@ if __name__ == "__main__":
                     print "Duration: {}".format(end_time - start_time)
                     print "-" * 15
                     print ''
-            except EquationError, e:
+            except EquationError as e:
                 print "Input error: {}".format(e)
-                traceback.print_exc()
-            except RPNError, e:
+                if logger.level <= logging.DEBUG:
+                    traceback.print_exc()
+            except RPNError as e:
                 print "RPN error: {}".format(e)
-                traceback.print_exc()
-            except Exception, e:
+                if logger.level <= logging.DEBUG:
+                    traceback.print_exc()
+            except Exception as e:
                 print "Unknown error: {}".format(e)
-                traceback.print_exc()
+                if logger.level <= logging.DEBUG:
+                    traceback.print_exc()

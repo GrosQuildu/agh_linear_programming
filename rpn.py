@@ -67,7 +67,7 @@ def is_number(x):
         return False
 
 
-class RPNError(BaseException):
+class RPNError(Exception):
     pass
 
 
@@ -293,7 +293,7 @@ def test_rpn_manually():
             print "Value: ", rpn.compute(x1=-1, x2=2)
             print "Value: ", rpn.compute([1, 2])
             print ''
-        except RPNError, e:
+        except RPNError as e:
             print '\nError:', e
 
 if __name__ == "__main__":
