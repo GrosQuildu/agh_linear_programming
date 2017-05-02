@@ -2,7 +2,7 @@
 # ~Gros
 
 import multiprocessing, logging
-import os
+from collections import namedtuple
 import random
 import sys
 import traceback
@@ -158,12 +158,12 @@ def from_file(path):
 
 
 def print_data(goal, goal_type, equations, boundaries):
-    print "Goal: ",
-    print goal.infix()
+    print "Goal:",
+    print goal.infix(),
     if goal_type == 'min':
-        print ' -> min',
+        print '-> min'
     else:
-        print ' -> max',
+        print '-> max'
 
     for i in xrange(len(boundaries)):
         print "{} <= x{} <= {}".format(boundaries[i][0], i, boundaries[i][1])
@@ -210,7 +210,7 @@ def find_optimum_one_level_wrapper(*args):
     return find_optimum_one_level(*(args[0]))
 
 
-def find_optimum_one_level(goal, goal_type, equations, boundaries, amount_of_rands):
+def find_optimum_one_level(goal, goal_type, equations, boundaries, amount_of_rands, parameters=None):
     optimum, cmp_func = prepare_from_goal_type(goal_type)
     optimum_variables = None
     logger.info("start, rands {}, boundaries {}".format(amount_of_rands, boundaries))
@@ -236,7 +236,10 @@ def find_optimum_wrapper(*args):
     return find_optimum(*(args[0]))
 
 
-def find_optimum(goal, goal_type, equations, boundaries, amount_of_rands, processes=1, deep=True, recursion_level=0):
+MonteCarloParameters = namedtuple("MonteCarloParameters", ['epsilon', 'epsilon_multiprocessing', 'max_recursion', 'delta'])
+
+
+def find_optimum(goal, goal_type, equations, boundaries, amount_of_rands, parameters=None, processes=1, deep=True, recursion_level=0):
     """Minimalize/maximalize goal function using monte-carlo method with respect to boundaries
 
     Args:
@@ -245,6 +248,14 @@ def find_optimum(goal, goal_type, equations, boundaries, amount_of_rands, proces
         equations(list of tuples): (RPN, string, float), i.e. (RPN('x1+x0'), '<=', 13.4)
         boundaries(list of tuples): (float, float) for every variable, such that boundaries[i]][0] <= xi <= boundaries[i]][1]
         amount_of_rands(int): how many random points check on every level
+
+        parameters(namedtuple MonteCarloParameters):
+            epsilon(float): end condition, end if all boundaries sizes are smaller than epsilon
+            epsilon_multiprocessing(float): end condition for multiprocessing, end multiprocessing if
+                                                biggest boundary size is smaller than this
+            max_recursion(int)
+            delta(float): new boundary = (x - boundary_size/delta, x + boundary_size/delta)
+
         processes(int): number of processes to use
         deep(bool): how to arrange work for processes (if True, join final results, else join on each level)
         recursion_level(int)
@@ -253,10 +264,14 @@ def find_optimum(goal, goal_type, equations, boundaries, amount_of_rands, proces
         optimum(tuple): (list of optimum variables, optimum)
     """
     logger.info("Start with boundaries {}".format(boundaries))
-    epsilon = 5.
-    epsilon_multiprocessing = 100.
-    max_recursion = sys.getrecursionlimit() - 10
-    delta = 4.  # new boundary = (x - boundary_size/delta, x + boundary_size/delta)
+    if parameters is None:
+        epsilon = 5.
+        epsilon_multiprocessing = 100.
+        max_recursion = sys.getrecursionlimit() - 10
+        delta = 4
+        parameters = MonteCarloParameters(epsilon, epsilon_multiprocessing, max_recursion, delta)
+    else:
+        epsilon, epsilon_multiprocessing, max_recursion, delta = parameters
 
     # end conditions
     if recursion_level >= max_recursion:
@@ -270,22 +285,22 @@ def find_optimum(goal, goal_type, equations, boundaries, amount_of_rands, proces
     # split biggest bound across processes
     max_bound_index, max_bound = max(enumerate(boundaries), key=lambda bound: bound[1][1] - bound[1][0])
     max_bound_size = max_bound[1] - max_bound[0]
-    if processes > 1 and max_bound_size > epsilon_multiprocessing:
+    if processes > 1 and max_bound_size >= epsilon_multiprocessing:
         new_boundaries = []
         for i in xrange(processes):
             new_boundaries.append(boundaries[:])
             new_boundaries[-1][max_bound_index] = (boundaries[max_bound_index][0] + (i * max_bound_size / processes),
                                                    boundaries[max_bound_index][0] + ((i+1) * max_bound_size / processes))
 
-        pool = multiprocessing.Pool(processes=processes)
         if deep:
-            optimum_point_value_from_processes = pool.map(find_optimum_wrapper,
-                                                   [(goal, goal_type, equations, bound, int(amount_of_rands/processes))
-                                                    for bound in new_boundaries])
+            find_optimum_func = find_optimum_wrapper
         else:
-            optimum_point_value_from_processes = pool.map(find_optimum_one_level_wrapper,
-                                                   [(goal, goal_type, equations, bound, int(amount_of_rands/processes))
-                                                    for bound in new_boundaries])
+            find_optimum_func = find_optimum_one_level_wrapper
+
+        pool = multiprocessing.Pool(processes=processes)
+        optimum_point_value_from_processes = pool.map(find_optimum_func, [(goal, goal_type, equations, bound,
+                                                                           int(amount_of_rands/processes),
+                                                                           parameters) for bound in new_boundaries])
 
         if goal_type == 'min':
             optimum_point_value = min(optimum_point_value_from_processes, key=lambda optimum_vars: optimum_vars[1])
@@ -303,45 +318,107 @@ def find_optimum(goal, goal_type, equations, boundaries, amount_of_rands, proces
         return None, None
 
     new_boundaries = [(max(l, x-((r-l)/delta)), min(r, x+((r-l)/delta))) for (l, r), x in zip(boundaries, optimum_point)]
-    return find_optimum(goal, goal_type, equations, new_boundaries, amount_of_rands, recursion_level+1)
+    return find_optimum(goal, goal_type, equations, new_boundaries, amount_of_rands, parameters,
+                        processes=processes, recursion_level=recursion_level+1)
 
 
-if __name__ == "__main__":
+def test():
     path = 'test_inputs/1p2.txt'
     parsed_data = from_file(path)
     print_data(*parsed_data)
     start_time = time()
     for x in xrange(10):
-        print find_optimum(*parsed_data, amount_of_rands=1000, processes=1, deep=False)
+        print find_optimum(*parsed_data, amount_of_rands=1000, processes=1, deep=True)
     end_time = time()
     print "Duration: {}".format(end_time - start_time)
     sys.exit(0)
 
-    '''
-    while True:
-        print "-"*15
-        input_type = raw_input("Input data manually (m), form file (f) or end it(end): ").lower()
-        try:
-            if input_type == 'm':
-                parsed_data = manually()
-            elif input_type == 'f':
-                path = raw_input("Gimme path: ")
-                parsed_data = from_file(path)
-                print_data(*parsed_data)
-            else:
-                break
-        except EquationError, e:
-            print "Input error:", e
-            traceback.print_exc()
-            sys.exit(1)
-        except RPNError, e:
-            print "RPN error:", e
-            traceback.print_exc()
-            sys.exit(1)
-        except Exception, e:
-            print "Unknown error:", e
-            traceback.print_exc()
-            sys.exit(1)
 
-        find_optimum(*parsed_data)
-        '''
+if __name__ == "__main__":
+    # ------- SET PARAMS
+    parameters = None
+    while parameters is None:
+        set_params = raw_input("Set parameters manually (y/N)").lower()
+        if set_params in ("y", "yes"):
+            try:
+                epsilon = float(raw_input("Gimme epsilon: "))
+                epsilon_multiprocessing = float(raw_input("Gimme multiprocessing epsilon: "))
+                max_recursion = int(raw_input("Gimme recursion limit (max is {}): ".format(sys.getrecursionlimit())))
+                delta = float(raw_input("Gimme delta (for new boundaries): "))
+                parameters = MonteCarloParameters(epsilon, epsilon_multiprocessing, max_recursion, delta)
+            except ValueError, e:
+                print "Input error: {}".format(e)
+            except Exception, e:
+                print "Unknown error: {}".format(e)
+        else:
+            print "Parameters set to default"
+            break
+
+    while True:
+        parsed_data = None
+        while parsed_data is None:
+            # ------ READ DATA
+            input_type = raw_input("Input data manually (m), form file (f) or end it(end): ").lower()
+            try:
+                if input_type == 'm':
+                    parsed_data = manually()
+                elif input_type == 'f':
+                    path = raw_input("Gimme path: ")
+                    parsed_data = from_file(path)
+                    print ''
+                    print_data(*parsed_data)
+                    print ''
+                else:
+                    sys.exit(0)
+            except EquationError, e:
+                print "Input error: {}".format(e)
+                traceback.print_exc()
+            except RPNError, e:
+                print "RPN error: {}".format(e)
+                traceback.print_exc()
+            except Exception, e:
+                print "Unknown error: {}".format(e)
+                traceback.print_exc()
+
+            # ------ SET MULTIPROCESSING
+            amount_of_rands, processes, deep = None, None, None
+            while amount_of_rands is None:
+                try:
+                    amount_of_rands = int(raw_input("Gimme amount of random points for one level: "))
+                    processes = int(raw_input("Gimme number of processes (threads) to use: "))
+                    deep = True
+                    if processes > 1:
+                        deep = raw_input("Type of multiprocessing: breadth (b) or deep (d): ").lower()
+                        if deep == 'b':
+                            deep = False
+                except ValueError, e:
+                    print "Input error: {}".format(e)
+                except Exception, e:
+                    print "Unknown error: {}".format(e)
+
+            # ------ COMPUTE OPTIMUM
+            try:
+                start_time = time()
+                optimum_point, optimum_value = find_optimum(*parsed_data, amount_of_rands=1000, parameters=parameters,
+                                                            processes=processes, deep=deep)
+                end_time = time()
+                print ''
+                if optimum_point is None:
+                    print "Optimum didn't found"
+                else:
+                    print "Optimum is {}".format(optimum_value)
+                    for i in xrange(len(optimum_point)):
+                        print "x{} = {}".format(i, optimum_point[i])
+                    print ''
+                    print "Duration: {}".format(end_time - start_time)
+                    print "-" * 15
+                    print ''
+            except EquationError, e:
+                print "Input error: {}".format(e)
+                traceback.print_exc()
+            except RPNError, e:
+                print "RPN error: {}".format(e)
+                traceback.print_exc()
+            except Exception, e:
+                print "Unknown error: {}".format(e)
+                traceback.print_exc()
