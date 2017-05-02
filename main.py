@@ -1,17 +1,17 @@
 # Linear programming, monte carlo method
 # ~Gros
 
-import multiprocessing, logging
-from collections import namedtuple
+import multiprocessing
 import random
 import sys
 import traceback
 import operator
 import re
+import logging
+from collections import namedtuple
 from rpn import RPN, RPNError, is_number
-from decimal import *
 from time import time
-getcontext().prec = 4
+
 logger = multiprocessing.log_to_stderr()
 logger.setLevel(logging.ERROR)
 
