@@ -8,6 +8,7 @@ import traceback
 import operator
 import re
 import logging
+import argparse
 from collections import namedtuple
 from rpn import RPN, RPNError, is_number
 from time import time
@@ -173,14 +174,14 @@ def print_data(goal, goal_type, equations, boundaries):
 
 
 def prepare_from_equality(equality):
-    if equality == "<":
-        cmp_func = operator.lt
-    elif equality == "<=":
+    if equality == "<=":
         cmp_func = operator.le
-    elif equality == ">":
-        cmp_func = operator.gt
-    else:
+    elif equality == ">=":
         cmp_func = operator.ge
+    elif equality == "<":
+        cmp_func = operator.lt
+    else:
+        cmp_func = operator.gt
     return cmp_func
 
 
@@ -322,19 +323,44 @@ def find_optimum(goal, goal_type, equations, boundaries, amount_of_rands, parame
                         processes=processes, recursion_level=recursion_level+1)
 
 
-def test():
-    path = 'test_inputs/1p2.txt'
+def quick_run(path, number_of_tests):
     parsed_data = from_file(path)
     print_data(*parsed_data)
-    start_time = time()
-    for x in xrange(10):
+    start_time_whole = time()
+    for i in xrange(number_of_tests):
+        start_time = time()
         print find_optimum(*parsed_data, amount_of_rands=1000, processes=1, deep=True)
-    end_time = time()
-    print "Duration: {}".format(end_time - start_time)
+        print "Duration {}: {}".format(i, time()-start_time)
+    end_time_whole = time()
+    print "Duration whole: {}".format(end_time_whole - start_time_whole)
     sys.exit(0)
 
 
 if __name__ == "__main__":
+    if len(sys.argv) > 1:
+        parser = argparse.ArgumentParser(description='Solver for linear problems, uses monte-carlo method Edit')
+        parser.add_argument('file', type=str, help='Path to file to parse')
+        parser.add_argument('amount', type=int, help='Amount of random points at each level')
+        parser.add_argument('-t', '--tests', type=int, help='Number of tests', default=1)
+        parser.add_argument('-p', '--processes', type=int, help='Number of processes', default=1)
+        parser.add_argument('-d', '--deep', action='store_true', help='Breath or deep type of multiprocessing')
+        args = parser.parse_args()
+
+        parsed_data = from_file(args.file)
+        print_data(*parsed_data)
+        print ''
+
+        start_time_total = time()
+        for i in xrange(args.tests):
+            start_time = time()
+            print "Result {}: {}".format(i, find_optimum(*parsed_data, amount_of_rands=args.amount, processes=args.processes, deep=args.deep))
+            if args.tests > 1:
+                print "Duration {}: {}".format(i, time() - start_time)
+                print ''
+        end_time_total = time()
+        print "Duration total: {}".format(end_time_total - start_time_total)
+        sys.exit(0)
+
     # ------- SET PARAMS
     parameters = None
     while parameters is None:
@@ -384,7 +410,7 @@ if __name__ == "__main__":
             amount_of_rands, processes, deep = None, None, None
             while amount_of_rands is None:
                 try:
-                    amount_of_rands = int(raw_input("Gimme amount of random points for one level: "))
+                    amount_of_rands = int(raw_input("Gimme amount of random points at each level: "))
                     processes = int(raw_input("Gimme number of processes (threads) to use: "))
                     deep = True
                     if processes > 1:
