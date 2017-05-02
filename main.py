@@ -72,6 +72,9 @@ def preparse_bound(boundary_equation):
     if bound[0] > bound[1]:
         raise EquationError("Left bound is bigger than right one: {}".format(repr(boundary_equation)))
 
+    if bound[0] < 0:
+        raise EquationError("Left bound is smaller than zero: {}".format(repr(boundary_equation)))
+
     return bound[0], bound_parts[2], bound[1]
 
 
