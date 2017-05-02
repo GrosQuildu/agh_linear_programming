@@ -6,7 +6,6 @@ import random
 import sys
 import traceback
 import operator
-import re
 import logging
 import argparse
 from collections import namedtuple
@@ -15,17 +14,6 @@ from time import time
 
 logger = multiprocessing.log_to_stderr()
 logger.setLevel(logging.ERROR)
-
-# http://stackoverflow.com/questions/4703390/how-to-extract-a-floating-number-from-a-string
-numeric_pattern = r"""
-[-+]?
-(?:
-    (?: \d* \. \d+ ) # .1 .12 .123 etc 9.1 etc 98.1 etc
-    |
-    (?: \d+ \.? ) # 1. 12. 123. etc 1 12 123 etc
-)
-(?: [Ee] [+-]? \d+ ) ?
-"""
 
 
 class EquationError(Exception):
@@ -41,19 +29,11 @@ def manually():
 
     # --------- BOUNDARIES
     boundaries = []
-    rx = re.compile(numeric_pattern, re.VERBOSE)
     print "Boundaries (int the form: 10 <= x0 <= 50):"
     for i in xrange(number_of_variables):
         boundary_equation = raw_input("for x{}: ".format(i))
-        numbers_eq = rx.findall(boundary_equation)
-
-        if len(numbers_eq) < 2:
-            raise EquationError("Wrong amount of numbers id boundaries: {}".format(repr(boundary_equation)))
-
-        a, b = map(float, (numbers_eq[0], numbers_eq[-1]))
-        if a > b:
-            raise EquationError("Left bound is bigger than right one: {}".format(repr(boundary_equation)))
-        boundaries.append((a, b))
+        bound = preparse_bound(boundary_equation)
+        boundaries.append(bound)
 
     # ------- EQUATIONS
     number_of_equations = int(raw_input("Number of equations: "))
@@ -74,13 +54,34 @@ def manually():
     return goal, goal_type, equations, boundaries
 
 
+def preparse_bound(boundary_equation):
+    """Parse bound to bounds and variable
+
+    Args:
+        boundary_equation(string): in form: 12.2 <= x3 <= 24
+    Returns:
+        list: [variable(string), bound(tuple of floats)], ie. ['x3', (12.2, 24)]
+    """
+    bound_parts = boundary_equation.replace('<=', ' <= ')
+    bound_parts = bound_parts.split()
+    if len(bound_parts) != 5:
+        raise EquationError("Wrong bound equation: {}".format(boundary_equation))
+
+    bound = (float(bound_parts[0]), float(bound_parts[4]))
+
+    if bound[0] > bound[1]:
+        raise EquationError("Left bound is bigger than right one: {}".format(repr(boundary_equation)))
+
+    return bound[0], bound_parts[2], bound[1]
+
+
 def preparse_equation(equation):
     """Parse equation to function and equality
 
     Args:
         equation(string): in form: 1 + 3^5*8 <= 5.5
     Returns:
-        list: [function, equality, bound], ie. ['1 + 3^5*8', '<=', 5.5]
+        list: [function(string), equality(string), bound(float)], ie. ['1 + 3^5*8', '<=', 5.5]
     """
     correct_equalities = ('<=', '>=')
     for equality in correct_equalities:
@@ -88,7 +89,7 @@ def preparse_equation(equation):
     equation = equation.split()
 
     if len(equation) < 3:
-        raise Exception("Incorrect equation to pre-parsing: {}".format(repr(equation)))
+        raise EquationError("Incorrect equation to pre-parsing: {}".format(repr(equation)))
 
     if equation[-2] not in correct_equalities:
         raise EquationError("Wrong equality, must be one of ({})".format(','.join(correct_equalities)))
@@ -127,20 +128,11 @@ def from_file(path):
 
     # --------- BOUNDARIES
     boundaries, equations = [], []
-    rx = re.compile(numeric_pattern, re.VERBOSE)
     i = 1
     while i < number_of_variables+1:
         boundary_equation = data[i]
-        numbers_eq = rx.findall(boundary_equation)
-
-        if len(numbers_eq) < 2:
-            raise EquationError("Wrong amount of numbers id boundaries: {}".format(repr(boundary_equation)))
-
-        a, b = map(float, (numbers_eq[0], numbers_eq[-1]))
-        if a > b:
-            raise EquationError("Left bound is bigger than right one: {}".format(repr(boundary_equation)))
-
-        boundaries.append((a, b))
+        bound = preparse_bound(boundary_equation)
+        boundaries.append(bound)
         i += 1
 
     # ------- EQUATIONS
@@ -169,7 +161,7 @@ def print_data(goal, goal_type, equations, boundaries):
         print '-> max'
 
     for i in xrange(len(boundaries)):
-        print "{} <= x{} <= {}".format(boundaries[i][0], i, boundaries[i][1])
+        print "{} <= {} <= {}".format(boundaries[i][0], boundaries[i][1], boundaries[i][2])
 
     for equation in equations:
         print "{} {} {}".format(equation[0].infix(), equation[1], equation[2])
@@ -200,13 +192,13 @@ def prepare_from_goal_type(goal_type):
 def pass_all_equations(variables, equations):
     for equation in equations:
         cmp_func = prepare_from_equality(equation[1])
-        if not cmp_func(equation[0].compute(*variables), equation[2]):
+        if not cmp_func(equation[0].compute(**variables), equation[2]):
             return False
     return True
 
 
 def random_vector(boundaries):
-    return [random.uniform(l, r) for l, r in boundaries]
+    return {v: random.uniform(l, r) for l, v, r in boundaries}
 
 
 def find_optimum_one_level_wrapper(*args):
@@ -220,13 +212,13 @@ def find_optimum_one_level_wrapper(*args):
 def find_optimum_one_level(goal, goal_type, equations, boundaries, amount_of_rands, parameters=None):
     optimum, cmp_func = prepare_from_goal_type(goal_type)
     optimum_variables = None
-    logger.info("start, rands {}, boundaries {}".format(amount_of_rands, boundaries))
+    logger.info("one_level: rands {}, boundaries {}".format(amount_of_rands, boundaries))
 
     for i in xrange(amount_of_rands):
         random_variables = random_vector(boundaries)
         logger.debug('{} {} {}'.format(boundaries, optimum, random_variables))
         if pass_all_equations(random_variables, equations):
-            to_check = goal.compute(*random_variables)
+            to_check = goal.compute(**random_variables)
             if cmp_func(to_check, optimum):
                 optimum = to_check
                 optimum_variables = random_variables
@@ -257,7 +249,8 @@ def find_optimum(goal, goal_type, equations, boundaries, amount_of_rands, parame
         goal(RPN): goal function
         goal_type(string): min or max
         equations(list of tuples): (RPN, string, float), i.e. (RPN('x1+x0'), '<=', 13.4)
-        boundaries(list of tuples): (float, float) for every variable, such that boundaries[i]][0] <= xi <= boundaries[i]][1]
+        boundaries(list of tuples): (float, string, float) for every variable, such that
+                                                boundaries[i][0] <= boundaries[i][1] <= boundaries[i][2]
         amount_of_rands(int): how many random points check on every level
 
         parameters(namedtuple MonteCarloParameters):
@@ -272,7 +265,7 @@ def find_optimum(goal, goal_type, equations, boundaries, amount_of_rands, parame
         recursion_level(int)
 
     Returns:
-        optimum(tuple): (list of optimum variables, optimum)
+        optimum(tuple): (dict of optimum variables, optimum)
     """
     logger.info("Start with boundaries {}".format(boundaries))
     if parameters is None:
@@ -289,18 +282,19 @@ def find_optimum(goal, goal_type, equations, boundaries, amount_of_rands, parame
         logger.info("Max recursion level overflow")
         return find_optimum_one_level(goal, goal_type, equations, boundaries, amount_of_rands)
 
-    if all(r-l < epsilon for l, r in boundaries):
+    if all(r-l < epsilon for l, _, r in boundaries):
         logger.info("Epsilon reached")
         return find_optimum_one_level(goal, goal_type, equations, boundaries, amount_of_rands)
 
     # split biggest bound across processes
-    max_bound_index, max_bound = max(enumerate(boundaries), key=lambda bound: bound[1][1] - bound[1][0])
-    max_bound_size = max_bound[1] - max_bound[0]
+    max_bound_index, max_bound = max(enumerate(boundaries), key=lambda bound: bound[1][2] - bound[1][0])
+    max_bound_size = max_bound[2] - max_bound[0]
     if processes > 1 and max_bound_size >= epsilon_multiprocessing:
         new_boundaries = []
         for i in xrange(processes):
             new_boundaries.append(boundaries[:])
             new_boundaries[-1][max_bound_index] = (boundaries[max_bound_index][0] + (i * max_bound_size / processes),
+                                                   boundaries[max_bound_index][1],
                                                    boundaries[max_bound_index][0] + ((i+1) * max_bound_size / processes))
 
         if deep:
@@ -314,21 +308,22 @@ def find_optimum(goal, goal_type, equations, boundaries, amount_of_rands, parame
                                                                            parameters) for bound in new_boundaries])
 
         if goal_type == 'min':
-            optimum_point_value = min(optimum_point_value_from_processes, key=lambda optimum_vars: optimum_vars[1])
+            optimum_variables_result = min(optimum_point_value_from_processes, key=lambda optimum_vars: optimum_vars[1])
         else:
-            optimum_point_value = max(optimum_point_value_from_processes, key=lambda optimum_vars: optimum_vars[1])
+            optimum_variables_result = max(optimum_point_value_from_processes, key=lambda optimum_vars: optimum_vars[1])
 
         if deep:
-            return optimum_point_value
+            return optimum_variables_result
 
     else:
-        optimum_point_value = find_optimum_one_level(goal, goal_type, equations, boundaries, amount_of_rands)
+        optimum_variables_result = find_optimum_one_level(goal, goal_type, equations, boundaries, amount_of_rands)
 
-    optimum_point = optimum_point_value[0]
-    if optimum_point is None:
+    optimum_variables = optimum_variables_result[0]
+    if optimum_variables is None:
         return None, None
 
-    new_boundaries = [(max(l, x-((r-l)/delta)), min(r, x+((r-l)/delta))) for (l, r), x in zip(boundaries, optimum_point)]
+    new_boundaries = [(max(l, optimum_variables[v]-((r-l)/delta)), v, min(r, optimum_variables[v]+((r-l)/delta))) for
+                      (l, v, r), x in zip(boundaries, optimum_variables)]
     return find_optimum(goal, goal_type, equations, new_boundaries, amount_of_rands, parameters,
                         processes=processes, recursion_level=recursion_level+1)
 
@@ -347,6 +342,7 @@ def quick_run(path, number_of_tests):
 
 
 if __name__ == "__main__":
+    # ----- COMMAND LINE
     if len(sys.argv) > 1:
         parser = argparse.ArgumentParser(description='Solver for linear problems, uses monte-carlo method Edit')
         parser.add_argument('file', type=str, help='Path to file to parse')
@@ -453,16 +449,16 @@ if __name__ == "__main__":
             # ------ COMPUTE OPTIMUM
             try:
                 start_time = time()
-                optimum_point, optimum_value = find_optimum(*parsed_data, amount_of_rands=1000, parameters=parameters,
-                                                            processes=processes, deep=deep)
+                optimum_variables, optimum_value = find_optimum(*parsed_data, amount_of_rands=1000, parameters=parameters,
+                                                                processes=processes, deep=deep)
                 end_time = time()
                 print ''
-                if optimum_point is None:
+                if optimum_variables is None:
                     print "Optimum didn't found"
                 else:
                     print "Optimum is {}".format(optimum_value)
-                    for i in xrange(len(optimum_point)):
-                        print "x{} = {}".format(i, optimum_point[i])
+                    for var_name, var_value in optimum_variables.iteritems():
+                        print "{} = {}".format(var_name, var_value)
                     print ''
                     print "Duration: {}".format(end_time - start_time)
                     print "-" * 15
