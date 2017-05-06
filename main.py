@@ -245,6 +245,8 @@ def find_optimum_wrapper(*args):
 MonteCarloParameters = namedtuple("MonteCarloParameters",
                                   ['epsilon', 'epsilon_multiprocessing', 'max_recursion', 'delta'])
 
+DEFAULT_PARAMETERS = MonteCarloParameters(0.1, 100., sys.getrecursionlimit() - 10, 4)
+
 
 def find_optimum(goal, goal_type, equations, boundaries, amount_of_rands, parameters=None,
                  processes=1, deep=True, recursion_level=0):
@@ -274,13 +276,8 @@ def find_optimum(goal, goal_type, equations, boundaries, amount_of_rands, parame
     """
     logger.info("Start with boundaries {}".format(boundaries))
     if parameters is None:
-        epsilon = 1.
-        epsilon_multiprocessing = 100.
-        max_recursion = sys.getrecursionlimit() - 10
-        delta = 4
-        parameters = MonteCarloParameters(epsilon, epsilon_multiprocessing, max_recursion, delta)
-    else:
-        epsilon, epsilon_multiprocessing, max_recursion, delta = parameters
+        parameters = DEFAULT_PARAMETERS
+    epsilon, epsilon_multiprocessing, max_recursion, delta = parameters
 
     # end conditions
     if recursion_level >= max_recursion:
@@ -333,6 +330,11 @@ def find_optimum(goal, goal_type, equations, boundaries, amount_of_rands, parame
                         processes=processes, recursion_level=recursion_level+1)
 
 
+def debug_traceback():
+    if logger.level <= logging.DEBUG:
+        traceback.print_exc()
+
+
 def quick_run(path, number_of_tests):
     parsed_data = from_file(path)
     print_data(*parsed_data)
@@ -355,9 +357,14 @@ def main_command_line():
     parser.add_argument('-d', '--deep', action='store_true', help='Breath or deep type of multiprocessing')
     args = parser.parse_args()
 
-    parsed_data = from_file(args.file)
-    print_data(*parsed_data)
-    print ''
+    try:
+        parsed_data = from_file(args.file)
+        print_data(*parsed_data)
+        print ''
+    except IOError as e:
+        print "Error: {} ".format(e)
+        debug_traceback()
+        sys.exit(1)
 
     start_time_total = time()
     for i in xrange(args.tests):
@@ -367,18 +374,15 @@ def main_command_line():
                                                          processes=args.processes, deep=args.deep))
         except EquationError as e:
             print "Input error: {}".format(e)
-            if logger.level <= logging.DEBUG:
-                traceback.print_exc()
+            debug_traceback()
             sys.exit(1)
         except RPNError as e:
             print "RPN error: {}".format(e)
-            if logger.level <= logging.DEBUG:
-                traceback.print_exc()
+            debug_traceback()
             sys.exit(1)
         except Exception as e:
             print "Unknown error: {}".format(e)
-            if logger.level <= logging.DEBUG:
-                traceback.print_exc()
+            debug_traceback()
             sys.exit(1)
 
         if args.tests > 1:
@@ -399,7 +403,13 @@ def main():
                 epsilon = float(raw_input("Gimme epsilon: "))
                 epsilon_multiprocessing = float(raw_input("Gimme multiprocessing epsilon: "))
                 max_recursion = int(raw_input("Gimme recursion limit (max is {}): ".format(sys.getrecursionlimit())))
-                delta = float(raw_input("Gimme delta (for new boundaries): "))
+                if max_recursion > sys.getrecursionlimit():
+                    print "Recursion limit to big"
+                    continue
+                delta = float(raw_input("Gimme delta (for new boundaries, min is 3): "))
+                if delta < 3:
+                    print "Delta too small, min is 3"
+                    continue
                 parameters = MonteCarloParameters(epsilon, epsilon_multiprocessing, max_recursion, delta)
             except ValueError as e:
                 print "Input error: {}".format(e)
@@ -407,6 +417,10 @@ def main():
                 print "Unknown error: {}".format(e)
         else:
             print "Parameters set to default"
+            print "epsilon: {}".format(DEFAULT_PARAMETERS.epsilon)
+            print "epsilon_multiprocessing: {}".format(DEFAULT_PARAMETERS.epsilon_multiprocessing)
+            print "max_recursion: {}".format(DEFAULT_PARAMETERS.max_recursion)
+            print "delta: {}".format(DEFAULT_PARAMETERS.delta)
             break
 
     while True:
@@ -427,60 +441,61 @@ def main():
                     sys.exit(0)
             except EquationError as e:
                 print "Input error: {}".format(e)
-                traceback.print_exc()
+                debug_traceback()
             except RPNError as e:
                 print "RPN error: {}".format(e)
-                traceback.print_exc()
+                debug_traceback()
+            except IOError as e:
+                print "File error: {}".format(e)
+                debug_traceback()
             except Exception as e:
                 print "Unknown error: {}".format(e)
-                traceback.print_exc()
+                debug_traceback()
 
-            # ------ SET MULTIPROCESSING
-            amount_of_rands, processes, deep = None, None, None
-            while amount_of_rands is None:
-                try:
-                    amount_of_rands = int(raw_input("Gimme amount of random points at each level: "))
-                    processes = int(raw_input("Gimme number of processes (threads) to use: "))
-                    deep = True
-                    if processes > 1:
-                        deep = raw_input("Type of multiprocessing: breadth (b) or deep (d): ").lower()
-                        if deep == 'b':
-                            deep = False
-                except ValueError as e:
-                    print "Input error: {}".format(e)
-                except Exception as e:
-                    print "Unknown error: {}".format(e)
-
-            # ------ COMPUTE OPTIMUM
+        # ------ SET MULTIPROCESSING
+        amount_of_rands, processes, deep = None, None, None
+        while amount_of_rands is None:
             try:
-                start_time = time()
-                optimum_variables, optimum_value = find_optimum(*parsed_data, amount_of_rands=1000,
-                                                                parameters=parameters,
-                                                                processes=processes, deep=deep)
-                end_time = time()
-                print ''
-                if optimum_variables is None:
-                    print "Optimum didn't found"
-                else:
-                    print "Optimum is {}".format(optimum_value)
-                    for var_name, var_value in optimum_variables.iteritems():
-                        print "{} = {}".format(var_name, var_value)
-                    print ''
-                    print "Duration: {}".format(end_time - start_time)
-                    print "-" * 15
-                    print ''
-            except EquationError as e:
+                amount_of_rands = int(raw_input("Gimme amount of random points at each level: "))
+                processes = int(raw_input("Gimme number of processes (threads) to use: "))
+                deep = True
+                if processes > 1:
+                    deep = raw_input("Type of multiprocessing: breadth (b) or deep (d): ").lower()
+                    if deep == 'b':
+                        deep = False
+            except ValueError as e:
                 print "Input error: {}".format(e)
-                if logger.level <= logging.DEBUG:
-                    traceback.print_exc()
-            except RPNError as e:
-                print "RPN error: {}".format(e)
-                if logger.level <= logging.DEBUG:
-                    traceback.print_exc()
             except Exception as e:
                 print "Unknown error: {}".format(e)
-                if logger.level <= logging.DEBUG:
-                    traceback.print_exc()
+
+        # ------ COMPUTE OPTIMUM
+        print "Start"
+        try:
+            start_time = time()
+            optimum_variables, optimum_value = find_optimum(*parsed_data, amount_of_rands=1000,
+                                                            parameters=parameters,
+                                                            processes=processes, deep=deep)
+            end_time = time()
+            print ''
+            if optimum_variables is None:
+                print "Optimum didn't found"
+            else:
+                print "Optimum is {}".format(optimum_value)
+                for var_name, var_value in optimum_variables.iteritems():
+                    print "{} = {}".format(var_name, var_value)
+                print ''
+                print "Duration: {}".format(end_time - start_time)
+                print "-" * 15
+                print ''
+        except EquationError as e:
+            print "Input error: {}".format(e)
+            debug_traceback()
+        except RPNError as e:
+            print "RPN error: {}".format(e)
+            debug_traceback()
+        except Exception as e:
+            print "Unknown error: {}".format(e)
+            debug_traceback()
 
 
 if __name__ == "__main__":
