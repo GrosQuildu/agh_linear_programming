@@ -371,6 +371,11 @@ def main_command_line():
         sys.exit(1)
 
     parameters = MonteCarloParameters(args.epsilon, args.epsilonMultiprocessing, args.maxRecursion, args.delta)
+    print "epsilon: {}".format(parameters.epsilon)
+    print "epsilon_multiprocessing: {}".format(parameters.epsilon_multiprocessing)
+    print "max_recursion: {}".format(parameters.max_recursion)
+    print "delta: {}".format(parameters.delta)
+
     start_time_total = time()
     for i in xrange(args.tests):
         start_time = time()
