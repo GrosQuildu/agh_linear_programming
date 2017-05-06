@@ -47,7 +47,7 @@ def manually():
     goal = raw_input("Gimme goal function: ")
     goal = RPN(goal)
 
-    goal_type = raw_input("Maximalize (max) or minimalize (min) goal function: ").lower()
+    goal_type = raw_input("Maximize (max) or minimize (min) goal function: ").lower()
     if goal_type not in ('min', 'max'):
         raise EquationError("Incorrect goal type, must be one of (min, max)")
 
@@ -242,10 +242,12 @@ def find_optimum_wrapper(*args):
         return None, None
 
 
-MonteCarloParameters = namedtuple("MonteCarloParameters", ['epsilon', 'epsilon_multiprocessing', 'max_recursion', 'delta'])
+MonteCarloParameters = namedtuple("MonteCarloParameters",
+                                  ['epsilon', 'epsilon_multiprocessing', 'max_recursion', 'delta'])
 
 
-def find_optimum(goal, goal_type, equations, boundaries, amount_of_rands, parameters=None, processes=1, deep=True, recursion_level=0):
+def find_optimum(goal, goal_type, equations, boundaries, amount_of_rands, parameters=None,
+                 processes=1, deep=True, recursion_level=0):
     """Minimalize/maximalize goal function using monte-carlo method with respect to boundaries
 
     Args:
@@ -344,50 +346,50 @@ def quick_run(path, number_of_tests):
     sys.exit(0)
 
 
-if __name__ == "__main__":
-    # ----- COMMAND LINE
-    if len(sys.argv) > 1:
-        parser = argparse.ArgumentParser(description='Solver for linear problems, uses monte-carlo method Edit')
-        parser.add_argument('file', type=str, help='Path to file to parse')
-        parser.add_argument('amount', type=int, help='Amount of random points at each level')
-        parser.add_argument('-t', '--tests', type=int, help='Number of tests (runs)', default=1)
-        parser.add_argument('-p', '--processes', type=int, help='Number of processes', default=1)
-        parser.add_argument('-d', '--deep', action='store_true', help='Breath or deep type of multiprocessing')
-        args = parser.parse_args()
+def main_command_line():
+    parser = argparse.ArgumentParser(description='Solver for linear problems, uses monte-carlo method Edit')
+    parser.add_argument('file', type=str, help='Path to file to parse')
+    parser.add_argument('amount', type=int, help='Amount of random points at each level')
+    parser.add_argument('-t', '--tests', type=int, help='Number of tests (runs)', default=1)
+    parser.add_argument('-p', '--processes', type=int, help='Number of processes', default=1)
+    parser.add_argument('-d', '--deep', action='store_true', help='Breath or deep type of multiprocessing')
+    args = parser.parse_args()
 
-        parsed_data = from_file(args.file)
-        print_data(*parsed_data)
-        print ''
+    parsed_data = from_file(args.file)
+    print_data(*parsed_data)
+    print ''
 
-        start_time_total = time()
-        for i in xrange(args.tests):
-            start_time = time()
-            try:
-                print "Result {}: {}".format(i, find_optimum(*parsed_data, amount_of_rands=args.amount, processes=args.processes, deep=args.deep))
-            except EquationError as e:
-                print "Input error: {}".format(e)
-                if logger.level <= logging.DEBUG:
-                    traceback.print_exc()
-                sys.exit(1)
-            except RPNError as e:
-                print "RPN error: {}".format(e)
-                if logger.level <= logging.DEBUG:
-                    traceback.print_exc()
-                sys.exit(1)
-            except Exception as e:
-                print "Unknown error: {}".format(e)
-                if logger.level <= logging.DEBUG:
-                    traceback.print_exc()
-                sys.exit(1)
+    start_time_total = time()
+    for i in xrange(args.tests):
+        start_time = time()
+        try:
+            print "Result {}: {}".format(i, find_optimum(*parsed_data, amount_of_rands=args.amount,
+                                                         processes=args.processes, deep=args.deep))
+        except EquationError as e:
+            print "Input error: {}".format(e)
+            if logger.level <= logging.DEBUG:
+                traceback.print_exc()
+            sys.exit(1)
+        except RPNError as e:
+            print "RPN error: {}".format(e)
+            if logger.level <= logging.DEBUG:
+                traceback.print_exc()
+            sys.exit(1)
+        except Exception as e:
+            print "Unknown error: {}".format(e)
+            if logger.level <= logging.DEBUG:
+                traceback.print_exc()
+            sys.exit(1)
 
-            if args.tests > 1:
-                print "Duration {}: {}".format(i, time() - start_time)
-                print ''
+        if args.tests > 1:
+            print "Duration {}: {}".format(i, time() - start_time)
+            print ''
 
-        end_time_total = time()
-        print "Duration total: {}".format(end_time_total - start_time_total)
-        sys.exit(0)
+    end_time_total = time()
+    print "Duration total: {}".format(end_time_total - start_time_total)
 
+
+def main():
     # ------- SET PARAMS
     parameters = None
     while parameters is None:
@@ -408,8 +410,8 @@ if __name__ == "__main__":
             break
 
     while True:
-        parsed_data = None
-        while parsed_data is None:
+        parsed_data = []
+        while not parsed_data:
             # ------ READ DATA
             input_type = raw_input("Input data manually (m), form file (f) or end it(end): ").lower()
             try:
@@ -452,7 +454,8 @@ if __name__ == "__main__":
             # ------ COMPUTE OPTIMUM
             try:
                 start_time = time()
-                optimum_variables, optimum_value = find_optimum(*parsed_data, amount_of_rands=1000, parameters=parameters,
+                optimum_variables, optimum_value = find_optimum(*parsed_data, amount_of_rands=1000,
+                                                                parameters=parameters,
                                                                 processes=processes, deep=deep)
                 end_time = time()
                 print ''
@@ -478,3 +481,10 @@ if __name__ == "__main__":
                 print "Unknown error: {}".format(e)
                 if logger.level <= logging.DEBUG:
                     traceback.print_exc()
+
+
+if __name__ == "__main__":
+    if len(sys.argv) > 1:
+        main_command_line()
+    else:
+        main()
