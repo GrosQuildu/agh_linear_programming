@@ -13,7 +13,7 @@ from rpn import RPN, RPNError, is_number
 from time import time
 
 logger = multiprocessing.log_to_stderr()
-logger.setLevel(logging.ERROR)
+logger.setLevel(logging.INFO)
 
 
 class EquationError(Exception):
@@ -355,6 +355,10 @@ def main_command_line():
     parser.add_argument('-t', '--tests', type=int, help='Number of tests (runs)', default=1)
     parser.add_argument('-p', '--processes', type=int, help='Number of processes', default=1)
     parser.add_argument('-d', '--deep', action='store_true', help='Breath or deep type of multiprocessing')
+    parser.add_argument('-e', '--epsilon', type=float, default=DEFAULT_PARAMETERS.epsilon)
+    parser.add_argument('-em', '--epsilonMultiprocessing', type=float, default=DEFAULT_PARAMETERS.epsilon_multiprocessing)
+    parser.add_argument('-r', '--maxRecursion', type=int, default=DEFAULT_PARAMETERS.max_recursion)
+    parser.add_argument('-l', '--delta', type=float, help='For new boundaries', default=DEFAULT_PARAMETERS.delta)
     args = parser.parse_args()
 
     try:
@@ -366,11 +370,13 @@ def main_command_line():
         debug_traceback()
         sys.exit(1)
 
+    parameters = MonteCarloParameters(args.epsilon, args.epsilonMultiprocessing, args.maxRecursion, args.delta)
     start_time_total = time()
     for i in xrange(args.tests):
         start_time = time()
         try:
-            print "Result {}: {}".format(i, find_optimum(*parsed_data, amount_of_rands=args.amount,
+            print "Result {}: {}".format(i, find_optimum(*parsed_data,
+                                                         amount_of_rands=args.amount, parameters=parameters,
                                                          processes=args.processes, deep=args.deep))
         except EquationError as e:
             print "Input error: {}".format(e)
