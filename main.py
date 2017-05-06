@@ -187,7 +187,7 @@ def prepare_from_goal_type(goal_type):
         optimum = float('Inf')
         cmp_func = operator.lt
     else:
-        optimum = -1
+        optimum = float('-Inf')
         cmp_func = operator.ge
     return optimum, cmp_func
 
