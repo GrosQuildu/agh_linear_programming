@@ -38,10 +38,18 @@ def manually():
     # ------- EQUATIONS
     number_of_equations = int(raw_input("Number of equations: "))
     equations = []
-    for i in xrange(number_of_equations):
+    i = 0
+    while i < number_of_equations:
         equation = raw_input("Gimme equation {}: ".format(i))
         function, equality, bound = preparse_equation(equation)
-        equations.append((RPN(function), equality, bound))
+        rpn = RPN(function)
+        try:
+            rpn.infix()
+            equations.append((rpn, equality, bound))
+        except RPNError as e:
+            print "Wrong equation: {}".format(e)
+            i -= 1
+        i += 1
 
     # -------- GOAL
     goal = raw_input("Gimme goal function: ")
