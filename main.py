@@ -16,7 +16,7 @@ from rpn import RPN, RPNError, is_number
 from time import time
 
 logger = multiprocessing.log_to_stderr()
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.ERROR)
 
 
 class EquationError(Exception):
