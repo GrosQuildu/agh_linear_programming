@@ -31,7 +31,6 @@ The most popular method for solving problems of that type is called simplex. How
 Therefore it can be used with non-linear equations.
 
 ### Solver
-Code for Python 2.7
 
 Run `main.py` for interactive session or `main.py --help` to pass args in command line.
 
