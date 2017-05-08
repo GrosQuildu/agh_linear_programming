@@ -1,6 +1,9 @@
 # Reverse Polish Notation
 # ~Gros
 
+from __future__ import print_function
+from builtins import range, input
+
 from collections import namedtuple
 import math
 
@@ -86,8 +89,8 @@ class RPN(object):
     @staticmethod
     def get_variables(rpn):
         types_tokens = RPN.tokens_to_types_values(rpn.parsed)
-        types_tokens = filter(lambda token_type_value: token_type_value[0] == VAR, types_tokens)
-        return map(lambda token_type_value: token_type_value[1], types_tokens)
+        types_tokens = [token_type_value for token_type_value in types_tokens if token_type_value[0] == VAR]
+        return [token_type_value[1] for token_type_value in types_tokens]
 
     @staticmethod
     def tokens_to_types_values(tokens):
@@ -102,7 +105,7 @@ class RPN(object):
                 TYPE in [OPERATOR, FUNC, SEPARATOR, NUM, VAR, LPAREN, RPAREN]
         """
         if type(tokens) != list:
-            for token_type in operators.keys() + functions.keys() + list('(),'):
+            for token_type in list(operators.keys()) + list(functions.keys()) + list('(),'):
                 tokens = tokens.replace(token_type, ' '+token_type+' ')
             tokens = tokens.split()
 
@@ -226,7 +229,7 @@ class RPN(object):
                 if len(stack) < n:
                     raise RPNError("Not enough operator/function arguments")
 
-                args = map(str, [stack.pop() for _ in xrange(n)][::-1])
+                args = list(map(str, [stack.pop() for _ in range(n)][::-1]))
                 if token_type == OPERATOR:
                     if operators[token].args == 1:
                         if token == '#':
@@ -268,7 +271,7 @@ class RPN(object):
                 if len(stack) < n:
                     raise RPNError("Not enough operator/function arguments")
 
-                args = [stack.pop() for _ in xrange(n)][::-1]
+                args = [stack.pop() for _ in range(n)][::-1]
                 if token_type == OPERATOR:
                     if operators[token].args == 1:
                         if token == '#':
@@ -294,7 +297,7 @@ class RPN(object):
 
 def test_rpn_manually():
     while True:
-        eq = raw_input("Equation: ")  # i.e. (pi * x2) + sin(tan(5/3)) + fabs(x1)
+        eq = str(input("Equation: "))  # i.e. (pi * x2) + sin(tan(5/3)) + fabs(x1)
         if eq.lower() in ('', 'end', 'quit'):
             break
         try:
@@ -302,13 +305,13 @@ def test_rpn_manually():
             rpn_variables_names = RPN.get_variables(rpn)
             rpn_variables_values = {}
             for rpn_var in rpn_variables_names:
-                rpn_variables_values[rpn_var] = float(raw_input("{} = ".format(rpn_var)))
-            print "RPN: ", rpn.parsed
-            print "Infix: ", rpn.infix()
-            print "Result: ", rpn.compute(**rpn_variables_values)
+                rpn_variables_values[rpn_var] = float(eval(input("{} = ".format(rpn_var))))
+            print("RPN:", rpn.parsed)
+            print("Infix:", rpn.infix())
+            print("Result:", rpn.compute(**rpn_variables_values))
         except RPNError as e:
-            print '\nError:', e
-        print ''
+            print("\nError: ", e)
+        print('')
 
 if __name__ == "__main__":
     test_rpn_manually()
