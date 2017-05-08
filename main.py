@@ -317,12 +317,14 @@ def find_optimum(goal, goal_type, equations, boundaries, amount_of_rands, parame
                                                                            int(amount_of_rands/processes),
                                                                            parameters) for bound in new_boundaries])
 
+        optimum_point_value_from_processes = list(filter(lambda x: None not in x, optimum_point_value_from_processes))
+        if not optimum_point_value_from_processes:
+            return None, None
+
         if goal_type == 'min':
-            optimum_variables_result = min(filter(lambda x: None not in x, optimum_point_value_from_processes),
-                                           key=lambda optimum_vars: optimum_vars[1])
+            optimum_variables_result = min(optimum_point_value_from_processes, key=lambda optimum_vars: optimum_vars[1])
         else:
-            optimum_variables_result = max(filter(lambda x: None not in x, optimum_point_value_from_processes),
-                                           key=lambda optimum_vars: optimum_vars[1])
+            optimum_variables_result = max(optimum_point_value_from_processes, key=lambda optimum_vars: optimum_vars[1])
 
         if deep:
             return optimum_variables_result
