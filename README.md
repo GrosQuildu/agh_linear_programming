@@ -1,6 +1,11 @@
 # AGH linear programming
 Solver for (not necessary) linear problems, using monte-carlo method. University project.
 
+```
+pip install -r requirements.txt
+python ./main.py
+```
+
 ### Linear problems
 Linear programming is a method to obtain "the best" set of values restricted to some linear conditions.
 It's may be useful in decision making. Let's consider example:
